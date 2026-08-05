@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS videos (
     source_path TEXT NOT NULL,
     es_video TEXT,
     es_captioned TEXT,
+    es_meta TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     error TEXT,
     posted_at TEXT,
@@ -49,8 +50,21 @@ def init_db() -> None:
     """Create tables if they don't exist. Safe to call on every run."""
     conn = _connect()
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that may be missing from older schema versions."""
+    migrations = [
+        ("videos", "es_meta", "TEXT"),
+    ]
+    for table, column, col_type in migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
 
 def hash_file(path: str) -> str:

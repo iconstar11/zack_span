@@ -55,6 +55,7 @@ def _derive_paths(video_path: str) -> dict:
         "dub_state": str(ES_DIR / (base + "_es_dub_state.json")),
         "synced": str(ES_DIR / (base + "_es.mp4")),
         "captioned": str(ES_DIR / (base + "_es_captioned.mp4")),
+        "meta": str(ES_DIR / (base + "_meta.json")),
     }
 
 
@@ -115,6 +116,10 @@ def run_single(video_path: str) -> str | None:
         from stage4_burn_captions import burn_captions
         burn_captions(paths["synced"], paths["transcript"], paths["captioned"])
 
+        # -- Stage 5: Generate Metadata ----------------------------------------
+        from stage5_metadata import generate_metadata
+        meta = generate_metadata(paths["synced"], paths["transcript"], paths["meta"])
+
         # -- Copy to to_post/ --------------------------------------------------
         captioned_name = os.path.basename(paths["captioned"])
         to_post_dst = str(TO_POST_DIR / captioned_name)
@@ -124,13 +129,15 @@ def run_single(video_path: str) -> str | None:
         # -- Update DB ---------------------------------------------------------
         update_status(video_id, "completed",
                       es_video=paths["synced"],
-                      es_captioned=paths["captioned"])
+                      es_captioned=paths["captioned"],
+                      es_meta=paths["meta"])
 
         print("=" * 60)
         print("  Pipeline complete")
+        print(f"  Title (es)    : {meta['title_es']}")
+        print(f"  Description   : {meta['description'][:100]}...")
         print(f"  Dubbed video  : {paths['captioned']}")
         print(f"  Ready to post : {to_post_dst}")
-        print(f"  Transcript    : {paths['transcript']}")
         print("=" * 60)
 
         return paths["captioned"]
