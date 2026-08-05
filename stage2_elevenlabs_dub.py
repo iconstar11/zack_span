@@ -108,11 +108,12 @@ def dub_audio(audio_path: str, base_path: Optional[str] = None) -> tuple[str, st
 
         def _create():
             with open(audio_path, "rb") as f:
-                return client.dubbing.dub_a_video_or_an_audio_file(
+                return client.dubbing.create(
                     file=f,
                     source_lang=config.ELEVENLABS_SOURCE_LANG,
                     target_lang=config.ELEVENLABS_TARGET_LANG,
                     num_speakers=0,
+                    watermark=True,
                 )
 
         resp = _retry_call(_create, label="Create dubbing job")
@@ -136,17 +137,21 @@ def dub_audio(audio_path: str, base_path: Optional[str] = None) -> tuple[str, st
 
     while True:
         def _poll():
-            return client.dubbing.get_dubbing_project_metadata(dubbing_id=dubbing_id)
+            return client.dubbing.get(dubbing_id=dubbing_id)
 
         meta = _retry_call(_poll, label="Poll dubbing status")
-        status = "dubbing" if getattr(meta, "in_progress", True) else "completed"
+        status = getattr(meta, "status", "dubbing")
 
         if status != last_status:
             print(f"          Status : {status}")
             last_status = status
 
-        if not getattr(meta, "in_progress", True):
+        if status == "dubbed":
             break
+
+        if status == "failed":
+            error_msg = getattr(meta, "error", "Unknown error")
+            raise RuntimeError(f"ElevenLabs dubbing failed: {error_msg}")
 
         if elapsed >= timeout_sec:
             raise TimeoutError(
@@ -157,11 +162,6 @@ def dub_audio(audio_path: str, base_path: Optional[str] = None) -> tuple[str, st
         time.sleep(poll_interval)
         elapsed += poll_interval
 
-    # Check for failure
-    if hasattr(meta, "status") and getattr(meta, "status", "") == "failed":
-        error_msg = getattr(meta, "error_message", "Unknown error")
-        raise RuntimeError(f"ElevenLabs dubbing failed: {error_msg}")
-
     print(f"          Dubbing complete")
 
     # -- Download dubbed audio -----------------------------------------------
@@ -170,7 +170,7 @@ def dub_audio(audio_path: str, base_path: Optional[str] = None) -> tuple[str, st
 
         def _download_audio():
             chunks = []
-            for chunk in client.dubbing.get_dubbed_file(
+            for chunk in client.dubbing.audio.get(
                 dubbing_id=dubbing_id,
                 language_code=config.ELEVENLABS_TARGET_LANG,
             ):
@@ -187,20 +187,23 @@ def dub_audio(audio_path: str, base_path: Optional[str] = None) -> tuple[str, st
         print(f"          Downloading transcript...")
 
         def _download_transcript():
-            return client.dubbing.get_dubbed_transcript(
+            resp = client.dubbing.transcripts.get(
                 dubbing_id=dubbing_id,
                 language_code=config.ELEVENLABS_TARGET_LANG,
                 format_type="json",
             )
+            # Extract the actual transcript from the response wrapper
+            transcript_obj = resp.json_
+            return transcript_obj.model_dump() if hasattr(transcript_obj, "model_dump") else transcript_obj
 
         transcript = _retry_call(_download_transcript, label="Download transcript")
-        # The SDK may return a dict or a raw string
-        if isinstance(transcript, str):
-            data = transcript
-        elif isinstance(transcript, dict):
+        if isinstance(transcript, dict):
             data = json.dumps(transcript, indent=2, ensure_ascii=False)
+        elif isinstance(transcript, str):
+            data = transcript
         else:
-            data = str(transcript)
+            data = json.dumps({"raw": str(transcript)}, indent=2)
+
 
         write_atomic(transcript_path, data)
         print(f"          Transcript saved : {transcript_path}")

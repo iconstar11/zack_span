@@ -51,6 +51,9 @@ def esc_path_for_filter(path: str) -> str:
     On Windows the colon in 'C:/...' is treated by ffmpeg's filter parser as
     an option separator. Using a relative path avoids the drive-letter colon
     entirely, which is more reliable than backslash escaping.
+
+    Also escapes parentheses, commas, and backslashes which break ffmpeg's
+    filter argument parser.
     """
     cwd = os.getcwd()
     try:
@@ -60,6 +63,9 @@ def esc_path_for_filter(path: str) -> str:
     except ValueError:
         pass
     path = path.replace("\\", "/")
+    # Escape ffmpeg filter parser special characters
+    for ch in ("\\", "(", ")", ",", "'", "[", "]"):
+        path = path.replace(ch, "\\" + ch)
     return path
 
 

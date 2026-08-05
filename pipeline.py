@@ -19,6 +19,12 @@ import subprocess
 import sys
 import os
 
+# Fix Unicode output on Windows terminals (emoji in filenames etc.)
+if sys.stdout.encoding != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if sys.stderr.encoding != "utf-8":
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 def _check_ffmpeg():
     """Verify ffmpeg and ffprobe are on PATH."""
