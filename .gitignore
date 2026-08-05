@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 *.tmp
 .venv/
+input/
+es/
+to_post/
+posted/
+*.db
